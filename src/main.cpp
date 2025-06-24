@@ -3,6 +3,10 @@
 #include <cmath>
 #include <chrono>
 
+using std::chrono::time_point_cast;
+using std::chrono::duration_cast;
+using std::chrono::nanoseconds;
+
 #ifdef _DEBUG
 static wchar_t debug_buffer[128];
 #endif
@@ -13,7 +17,7 @@ using namespace std::chrono_literals;
 struct Vec2
 {
   float x, y;
-  Vec2() : x(0.0), y(0.0) {}
+  Vec2() : x(0.0f), y(0.0f) {}
   Vec2(float x, float y) : x(x), y(y) {}
   Vec2(LONG x, LONG y) : x(static_cast<float>(x)), y(static_cast<float>(y)) {}
   Vec2(POINT p) : x(static_cast<float>(p.x)), y(static_cast<float>(p.y)) {}
@@ -87,7 +91,7 @@ static Vec2 raw_input_to_vec2(HRAWINPUT lParam)
   return out;
 }
 
-ULONGLONG last_updated_time{};
+hires_clock::time_point last_updated_time{};
 Vec2 accumulated_movement{};
 Vec2 last_direction{};
 float last_length{};
@@ -99,7 +103,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
   {
     case WM_INPUT:
     {
-      ULONGLONG time_now = GetTickCount64();
+      auto time_now = hires_clock::now();
       Vec2 last_move{};
       RAWINPUT raw_input{};
       static UINT dwSize = sizeof(RAWINPUT);
@@ -114,7 +118,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
       {
         last_move = this_move;
         ++samples;
-        if (last_updated_time >= time_now-16)
+        if (time_now - last_updated_time <= duration_cast<nanoseconds>(24ms))
         {
           accumulated_movement = Vec2::add(accumulated_movement, last_move);
         }
@@ -131,7 +135,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
           last_direction = Vec2::normalized(accumulated_movement);
           last_updated_time = time_now;
   #ifdef _DEBUG
-          swprintf_s(debug_buffer, sizeof(debug_buffer) / 2, L"%lld accumulated: (%f, %f) len: %f %d %f\n", time_now, accumulated_movement.x, accumulated_movement.y, last_length, samples, last_length/samples*4);
+          swprintf_s(debug_buffer, sizeof(debug_buffer) / 2, L"%llu accumulated: (%f, %f) len: %f %d %f\n", time_now.time_since_epoch().count(), accumulated_movement.x, accumulated_movement.y, last_length, samples, last_length / samples * 4);
           OutputDebugStringW(debug_buffer);
   #endif
           samples = 0;
@@ -174,7 +178,7 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, 
   .uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP,
   .uCallbackMessage = WM_USER+1,
   .hIcon = LoadIcon(NULL, IDI_APPLICATION),
-  .szTip = TEXT("Mouse Momentum")
+  .szTip = TEXT("Cursor Momentum")
   };
   Shell_NotifyIcon(NIM_ADD, &nid);
 
@@ -215,7 +219,7 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, 
       accumulated_time += elapse_time;
       while (accumulated_time >= time_step)
       {
-        if (GetTickCount64() >= last_updated_time+24)
+        if (new_time - last_updated_time >= duration_cast<nanoseconds>(16ms))
         {
           last_length *= 0.94f;
           Vec2 velocity = last_direction.scale(last_length);
