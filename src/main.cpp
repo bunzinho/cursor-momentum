@@ -9,6 +9,9 @@ using std::chrono::time_point_cast;
 using std::chrono::duration_cast;
 using std::chrono::nanoseconds;
 
+#define WM_TRAYICON WM_USER+1
+#define ID_TRAY_QUIT 40001
+
 #ifdef _DEBUG
 static wchar_t debug_buffer[128];
 #endif
@@ -59,17 +62,23 @@ struct Vec2
   }
 };
 
-static void handle_tray_icon(LPARAM lParam)
+static void handle_tray_icon(HWND hwnd, LPARAM lParam)
 {
   switch (lParam)
   {
-    case WM_LBUTTONDOWN:
+    case WM_LBUTTONUP:
     {
-      PostQuitMessage(0);
       break;
     }
-    case WM_RBUTTONDOWN:
+    case WM_RBUTTONUP:
     {
+      POINT p;
+      GetCursorPos(&p);
+      HMENU hmenu = CreatePopupMenu();
+      AppendMenu(hmenu, MFT_STRING, ID_TRAY_QUIT, TEXT("Quit"));
+      SetForegroundWindow(hwnd);
+      TrackPopupMenu(hmenu, TPM_RIGHTBUTTON, p.x, p.y, 0, hwnd, NULL);
+      DestroyMenu(hmenu);
       break;
     }
     case WM_MOUSEMOVE:
@@ -105,7 +114,7 @@ int samples{};
 static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
   switch (msg)
-  {
+  {      
     case WM_INPUT:
     {
       auto time_now = hires_clock::now();
@@ -129,7 +138,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
         }
         else
         {
-          // 16ms has passed update and reset
+          // 24ms has passed update and reset
           constexpr auto length_threshold = 6.0;
           last_length = Vec2::length(accumulated_movement);
           if (last_length < length_threshold)
@@ -149,9 +158,18 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
       }
       return 0;
     }
-    case WM_USER+1:
+    case WM_COMMAND:
     {
-      handle_tray_icon(lParam);
+
+      if (ID_TRAY_QUIT == LOWORD(wParam))
+      {
+        PostQuitMessage(0);
+      }
+      return 0;
+    }
+    case WM_TRAYICON:
+    {
+      handle_tray_icon(hwnd, lParam);
       return 0;
     }
     case WM_DESTROY:
@@ -181,7 +199,7 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, 
   .hWnd = hwnd,
   .uID = 1,
   .uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP,
-  .uCallbackMessage = WM_USER+1,
+  .uCallbackMessage = WM_TRAYICON,
   .hIcon = LoadIcon(NULL, IDI_APPLICATION),
   .szTip = TEXT("Cursor Momentum")
   };
@@ -201,7 +219,7 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, 
   }
 
   BOOL running = true;
-  while (running)
+  while (true)
   {
     MSG msg;
     while (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE))
@@ -214,7 +232,11 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, 
       DispatchMessage(&msg);
     }
 
-    if (last_length >= 1.0f)
+    if (!running)
+    {
+      break;
+    }
+    else if (last_length >= 1.0f)
     {
       static std::chrono::nanoseconds accumulated_time{};
       static auto current_time = hires_clock::now();
@@ -224,7 +246,7 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, 
       accumulated_time += elapse_time;
       while (accumulated_time >= time_step)
       {
-        if (new_time - last_updated_time >= duration_cast<nanoseconds>(16ms))
+        if (new_time - last_updated_time >= duration_cast<nanoseconds>(32ms))
         {
           last_length *= 0.94f;
           Vec2 velocity = last_direction.scale(last_length);
