@@ -3,6 +3,8 @@
 #include <cmath>
 #include <chrono>
 
+using hires_clock = std::chrono::high_resolution_clock;
+using namespace std::chrono_literals;
 using std::chrono::time_point_cast;
 using std::chrono::duration_cast;
 using std::chrono::nanoseconds;
@@ -11,8 +13,6 @@ using std::chrono::nanoseconds;
 static wchar_t debug_buffer[128];
 #endif
 
-using hires_clock = std::chrono::high_resolution_clock;
-using namespace std::chrono_literals;
 
 struct Vec2
 {
@@ -25,6 +25,11 @@ struct Vec2
   static float length(const Vec2& v)
   {
     return std::sqrt(v.x * v.x + v.y * v.y);
+  }
+
+  static float length_squared(const Vec2& v)
+  {
+    return v.x * v.x + v.y * v.y;
   }
 
   static Vec2 normalized(Vec2 v)
@@ -114,7 +119,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
         this_move = Vec2(raw_input.data.mouse.lLastX, raw_input.data.mouse.lLastY);
       }
 
-      if (Vec2::length(this_move) != 0)
+      if (Vec2::length_squared(this_move) > 0)
       {
         last_move = this_move;
         ++samples;
