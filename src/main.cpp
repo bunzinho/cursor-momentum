@@ -1,7 +1,9 @@
+#define NOMINMAX
 #include <Windows.h>
 #include <vector>
 #include <cmath>
 #include <chrono>
+#include "vec2.h"
 
 using hires_clock = std::chrono::high_resolution_clock;
 using namespace std::chrono_literals;
@@ -16,51 +18,6 @@ using std::chrono::nanoseconds;
 static wchar_t debug_buffer[128];
 #endif
 
-
-struct Vec2
-{
-  float x, y;
-  Vec2() : x(0.0f), y(0.0f) {}
-  Vec2(float x, float y) : x(x), y(y) {}
-  Vec2(LONG x, LONG y) : x(static_cast<float>(x)), y(static_cast<float>(y)) {}
-  Vec2(POINT p) : x(static_cast<float>(p.x)), y(static_cast<float>(p.y)) {}
-
-  static float length(const Vec2& v)
-  {
-    return std::sqrt(v.x * v.x + v.y * v.y);
-  }
-
-  static float length_squared(const Vec2& v)
-  {
-    return v.x * v.x + v.y * v.y;
-  }
-
-  static Vec2 normalized(Vec2 v)
-  {
-    float len = Vec2::length(v);
-    if (len > 0.0)
-    {
-      v.x /= len;
-      v.y /= len;
-    }
-    return v;
-  }
-  static Vec2 add(const Vec2& v1, const Vec2& v2)
-  {
-    return { v1.x + v2.x, v1.y + v2.y };
-  }
-
-  Vec2 scale(float scale) const
-  {
-    return { x * scale, y * scale };
-  }
-
-  POINT POINT() const
-  {
-    
-    return { static_cast<LONG>(std::round(x)), static_cast<LONG>(std::round(y)) };
-  }
-};
 
 static void handle_tray_icon(HWND hwnd, LPARAM lParam)
 {
@@ -88,23 +45,6 @@ static void handle_tray_icon(HWND hwnd, LPARAM lParam)
   }
 }
 
-static Vec2 raw_input_to_vec2(HRAWINPUT lParam)
-{
-  Vec2 out{};
-  
-  static UINT dwSize = sizeof(RAWINPUT);
-  RAWINPUT raw_input{};
-
-  if (GetRawInputData(lParam, RID_INPUT, &raw_input, &dwSize, sizeof(RAWINPUTHEADER)) != -1)
-  {
-    if (raw_input.header.dwType == RIM_TYPEMOUSE)
-    {
-      out = { raw_input.data.mouse.lLastX, raw_input.data.mouse.lLastY };
-    }
-  }
-  return out;
-}
-
 hires_clock::time_point last_updated_time{};
 Vec2 accumulated_movement{};
 Vec2 last_direction{};
@@ -114,7 +54,7 @@ int samples{};
 static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
   switch (msg)
-  {      
+  {
     case WM_INPUT:
     {
       auto time_now = hires_clock::now();
@@ -128,7 +68,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
         this_move = Vec2(raw_input.data.mouse.lLastX, raw_input.data.mouse.lLastY);
       }
 
-      if (Vec2::length_squared(this_move) > 0)
+      if (Vec2::length_squared(this_move) > 0.0f)
       {
         last_move = this_move;
         ++samples;
@@ -239,10 +179,14 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, 
     else if (last_length >= 1.0f)
     {
       static std::chrono::nanoseconds accumulated_time{};
-      static auto current_time = hires_clock::now();
       static auto constexpr time_step = std::chrono::duration_cast<std::chrono::nanoseconds>(1s) / 120;
+
+      static auto current_time = hires_clock::now();
       auto new_time = hires_clock::now();
+
       auto elapse_time = new_time - current_time;
+      elapse_time = std::min(elapse_time, time_step * 4);
+
       accumulated_time += elapse_time;
       while (accumulated_time >= time_step)
       {
@@ -265,5 +209,7 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, 
     {
       WaitMessage();
     }
-  }
+  } // while (running)
+  
+  Shell_NotifyIcon(NIM_DELETE, &nid);
 }
